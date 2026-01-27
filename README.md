@@ -17,10 +17,12 @@ let [var] = [val]``` makes your variable immutable. And don't worry, we added ke
 3. **Verify**: Open a terminal and type:
 
     ```basalt --version```
+   
 If it successfully installed, then congrats! You can now write scripts in Basalt.
 
 ## 📜 Running your first script:
 To run a Basalt file, use the ```-r``` flag:
+
 ```basalt -r your_script.basalt```
 
 ## 🏗️ Technical Specs:
