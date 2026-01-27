@@ -3,7 +3,7 @@
 Basalt is a lightweight programming language built by 1 person over the course of ~3-4 days designed for simplicity and ease-of-use (don't quote me on that) written in Python.
 
 ## 🔥 Key Features:
-- **Dynamic Typing**: In Basalt, unlike many other programming languages and like many other pr``ogramming languages, you don't have to state the type of your variable.
+- **Dynamic Typing**: In Basalt, unlike many other programming languages and like many other programming languages, you don't have to state the type of your variable.
 - **Default Immutability**: A lot of times, you may have realized in your broken code that you accidentally overwrote a variable's value. In Basalt, we make it easier for you. ```basalt
 let [var] = [val]``` makes your variable immutable. And don't worry, we added keywords for mutable variables and to make variables mutable/immutable.
 - **Comma-Less Syntax**: Are you annoyed by constantly typing commas everywhere in your code? (probably not) Well, Basalt removes them for you. Commas are useless, anyway.
