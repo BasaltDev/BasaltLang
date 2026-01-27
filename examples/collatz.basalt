@@ -1,0 +1,16 @@
+let undef number
+input("Enter the number to start off with: " number)
+float(number)
+printf("[number]\n")
+while number > 1 {
+    let undef even = number
+    even %= 2
+    if even == 0 {
+        number /= 2
+        int(number)
+    } else {
+        number *= 3
+        number += 1
+    }
+    printf("[number]\n")
+}
