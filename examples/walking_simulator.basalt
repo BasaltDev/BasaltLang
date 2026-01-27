@@ -1,0 +1,51 @@
+<-- basic implementation of a tiny terminal-based walking simulator
+
+let mut player_pos_x = 1
+let mut player_pos_y = 1
+
+while 1 == 1 {
+    clear()
+    let mut i=0
+    repeat 6 {
+        let mut j=0
+        repeat 10 {
+            if i == player_pos_y and j == player_pos_x {
+                print("@")
+            } elseif i == 0 or i == 5 {
+                print("#")
+            } elseif j == 0 or j == 9 {
+                print("#")
+            } else {
+                print(" ")
+            }
+            j++
+        }
+        println("")
+        i++
+    }
+    let undef char_input
+    input("" char_input)
+    string upper(char_input)
+    <--printf("[char_input]\n")
+    if char_input == "W" {
+        player_pos_y--
+        if player_pos_y < 1 {
+            player_pos_y = 1
+        }
+    } elseif char_input == "S" {
+        player_pos_y++
+        if player_pos_y > 4 {
+            player_pos_y = 4
+        }
+    } elseif char_input == "A" {
+        player_pos_x--
+        if player_pos_x < 1 {
+            player_pos_x = 1
+        }
+    } elseif char_input == "D" {
+        player_pos_x++
+        if player_pos_x > 8 {
+            player_pos_x = 8
+        }
+    }
+}
