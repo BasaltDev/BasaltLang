@@ -15,6 +15,7 @@ let [var] = [val]``` makes your variable immutable. And don't worry, we added ke
 1. Download ```basalt.exe``` from the Releases tab (or download the source code, we don't judge)
 2. Add to **PATH**: Move the exe to a folder (e.g. ```C:\Basalt```) and add that folder to your System Environment Variables
 3. **Verify**: Open a terminal and type:
+
     ```basalt --version```
 If it successfully installed, then congrats! You can now write scripts in Basalt.
 
