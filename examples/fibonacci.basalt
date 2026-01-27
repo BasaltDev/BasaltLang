@@ -1,0 +1,17 @@
+fn fib {
+    let mut a = 1
+    let mut b = 1
+    let mut c = 2
+    let undef novi
+    printf("[a]\n")
+    repeat 100 {
+        novi = b
+        novi += c
+        a = b
+        b = c
+        c = novi
+        printf("[a]\n")
+    }
+}
+
+call fib
