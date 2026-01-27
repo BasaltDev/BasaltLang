@@ -1,0 +1,32 @@
+<-- FizzBuzz
+
+clear()
+let mut i = 0
+repeat 100 {
+    i+=1
+    let mut divisible3 = 0
+    let mut divisible5 = 0
+    divisible3 = i
+    divisible3 %= 3
+    if divisible3 == 0 {
+        divisible3 = 1
+    } else {
+        divisible3 = 0
+    }
+    divisible5 = i
+    divisible5 %= 5
+    if divisible5 == 0 {
+        divisible5 = 1
+    } else {
+        divisible5 = 0
+    }
+    if divisible3 == 1 and divisible5 == 1 {
+        println("FizzBuzz")
+    } elseif divisible3 == 1 {
+        println("Fizz")
+    } elseif divisible5 == 1 {
+        println("Buzz")
+    } else {
+        printf("[i]\n")
+    }
+}
