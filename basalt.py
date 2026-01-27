@@ -187,6 +187,10 @@ class Lexer:
                 self.tokens.append(("SEMICOLON", ";"))
             elif self.current_char == ":":
                 self.tokens.append(("COLON", ":"))
+            elif self.current_char == "@":
+                self.tokens.append(("MONKEY", "@"))
+            elif self.current_char == "$":
+                self.tokens.append(("DOLLAR", "$"))
             elif self.current_char == "\n":
                 self.tokens.append(("NEWLINE", "\n"))
             self.advance()
@@ -983,7 +987,6 @@ class Interpreter:
                         next = next[1]
                     key = next
                     if command[1] == "delete":
-                        print("deletioning")
                         self.variables[dict_name]["value"].pop(key)
                         continue
                     self.advance()
@@ -1092,8 +1095,6 @@ class Interpreter:
                     else:
                         splitted = variable.split(to_split)
                     self.variables[next]["value"] = splitted
-            elif current_token_type == "CURLY" and current_token_value == "}":
-                self.curly_count -= 1
             elif current_token_type == "CREMENTATION":
                 left = self.peek(-1)
                 if left[0] == 'IDENTIFIER':
@@ -1201,8 +1202,7 @@ INFO_TEXT = """Basalt Engine Information:
   Memory usage: probably a lot considering it's Python and this language is unoptimized
   Interpreter size: probably around 60-70kb (maybe more)
   Developed by: BasaltDev (i'm not leaking my name bro)
-  Developed in: ~3-4 days
-"""
+  Developed in: ~3-4 days"""
 
 def main():
     global argv
@@ -1233,11 +1233,17 @@ def main():
                 return
             global parent_folder
             parent_folder = os.path.dirname(os.path.abspath(argv[-1]))
+            if not os.path.exists(os.path.join(parent_folder, os.path.basename(argv[0]))):
+                print("Error: Expected an actually existing file to run")
+                return
             code = open(argv[0], 'r').read()
             lexer = Lexer(code, keywords=keywords)
             tokens = lexer.tokenize()
             interpreter = Interpreter(tokens)
             interpreter.interpret()
-
+        else:
+            print(VERSION_INFO)
+            print("Usage: basalt [-flag/--flag] [file.basalt]")
+            return
 if __name__ == "__main__":
     main()
