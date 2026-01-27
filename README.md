@@ -4,8 +4,7 @@ Basalt is a lightweight programming language built by 1 person over the course o
 
 ## 🔥 Key Features:
 - **Dynamic Typing**: In Basalt, unlike many other programming languages and like many other programming languages, you don't have to state the type of your variable.
-- **Default Immutability**: A lot of times, you may have realized in your broken code that you accidentally overwrote a variable's value. In Basalt, we make it easier for you. ```basalt
-let [var] = [val]``` makes your variable immutable. And don't worry, we added keywords for mutable variables and to make variables mutable/immutable.
+- **Default Immutability**: A lot of times, you may have realized in your broken code that you accidentally overwrote a variable's value. In Basalt, we make it easier for you. ```let [var] = [val]``` makes your variable immutable. And don't worry, we added keywords for mutable variables and to make variables mutable/immutable.
 - **Comma-Less Syntax**: Are you annoyed by constantly typing commas everywhere in your code? (probably not) Well, Basalt removes them for you. Commas are useless, anyway.
 - **Compound Data Types**: Basalt supports compound data types such as *lists* (```let list_object = ["a" "b" "c"]```) and *dictionaries* (```let dict_object = {"a": "b" "c": "d"}```), and it even includes custom methods for lists and dictionaries.
 - **Context-Aware File I/O**: I'd like to bet that at least one or two newly-developed languages struggle with context-aware file I/O. You want to write to a file in ```C:\Directory1``` but instead it writes to a file in ```C:\LanguageDirectory```. Basalt doesn't struggle with these small issues.
