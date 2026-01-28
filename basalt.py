@@ -194,7 +194,12 @@ class Lexer:
             elif self.current_char == ":":
                 self.tokens.append(("COLON", ":"))
             elif self.current_char == "@":
-                self.tokens.append(("MONKEY", "@"))
+                if self.peek().isalpha() or self.peek() == "_":
+                    self.advance()
+                    identifier = self.get_identifier()
+                    self.tokens.append(("MODIFIER", identifier))
+                else:
+                    self.tokens.append(("MONKEY", "@"))
             elif self.current_char == "$":
                 self.tokens.append(("DOLLAR", "$"))
             elif self.current_char == "\n":
@@ -223,6 +228,8 @@ class Interpreter:
                 "mutable": False
             },
         }
+        self.classes = {}
+        self.class_variables = {} # yes, special type of variable for classes, holy shit :O
         self.broken = False
         self.functions = {}
         self.curly_count = 0
@@ -322,32 +329,59 @@ class Interpreter:
         evaluated = eval(parsed)
         return evaluated
 
-    def skip_block_function(self, name, params, line):
+    def skip_block_function(self, name, params, line, class_method=False, tokens=[], indx=0):
         brace_count = 0
-        function = []
-        while self.current_token is not None:
-            if self.current_token[0] == "NEWLINE":
-                self.line += 1
-            else:
-                function.append(self.current_token)
-            if self.current_token[1] == "{":
-                brace_count += 1
-                self.curly_count += 1
-            elif self.current_token[1] == "}":
-                brace_count -= 1
-                self.curly_count -= 1
-                if brace_count == 0:
-                    self.advance()
-                    break
+        if not class_method:
+            function = []
+            while self.current_token is not None:
+                if self.current_token[0] == "NEWLINE":
+                    self.line += 1
+                else:
+                    function.append(self.current_token)
+                if self.current_token[1] == "{":
+                    brace_count += 1
+                    self.curly_count += 1
+                elif self.current_token[1] == "}":
+                    brace_count -= 1
+                    self.curly_count -= 1
+                    if brace_count == 0:
+                        self.advance()
+                        break
+                self.advance()
+            self.curly_count -= 1
+            self.functions[name] = {
+                "tokens": function[1:-1],
+                "params": params,
+                "line": line
+            }
+            self.position -= 2
             self.advance()
-        self.curly_count -= 1
-        self.functions[name] = {
-            "tokens": function[1:-1],
-            "params": params,
-            "line": line
-        }
-        self.position -= 2
-        self.advance()
+        else:
+            function_tokens = []
+            token = tokens[0]
+            idx = 0
+            brace_count = 1
+            while token is not None:
+                indx+=1
+                if token[0] == "NEWLINE":
+                    self.line += 1
+                else:
+                    function_tokens.append(token)
+                if token[1] == "{":
+                    brace_count += 1
+                    self.curly_count += 1
+                elif token[1] == "}":
+                    brace_count -= 1
+                    self.curly_count -= 1
+                    if brace_count == 0:
+                        idx += 1
+                        break
+                idx += 1
+                if idx >= len(tokens):
+                    token = None
+                    continue
+                token = tokens[idx]
+            return function_tokens[:-1], indx
     
     def skip_block_repeat(self, amount):
         brace_count = 0
@@ -445,7 +479,67 @@ class Interpreter:
                 break
         self.advance()
     
-    def interpret(self, variables=None, functions=None, line=None, in_function=False, importing=False):
+    def skip_block_class(self, name, params, line):
+        brace_count = 0
+        class_ = []
+        while self.current_token is not None:
+            if self.current_token[0] == "NEWLINE":
+                self.line += 1
+            else:
+                class_.append(self.current_token)
+            if self.current_token[1] == "{":
+                brace_count += 1
+                self.curly_count += 1
+            elif self.current_token[1] == "}":
+                brace_count -= 1
+                self.curly_count -= 1
+                if brace_count == 0:
+                    self.advance()
+                    break
+            self.advance()
+        methods = {}
+        self.advance()
+        self.advance()
+        idx = 0
+        while idx < len(class_):
+            token = class_[idx]
+            if token == ("KEYWORD", "fn"):
+                if idx >= len(class_):
+                    break
+                idx += 1
+                nam = class_[idx][1]
+                pars = []
+                if class_[idx] == ("PARENTHESIS", "(") or class_[idx] == ("SQUARE", "["):
+                    idx += 1
+                    pars = []
+                    while 1==1:
+                        idx += 1
+                        if class_[idx] == ("PARENTHESIS", ")") or class_[idx] == ("SQUARE", "]"):
+                            break
+                        else:
+                            pars.append(class_[idx])
+                while 1==1:
+                    if class_[idx] == ("CURLY", "{"):
+                        idx += 1
+                        break
+                    idx += 1
+                method, idx = self.skip_block_function(nam, pars, 0, class_method=True, tokens=class_[idx:], indx=idx)
+                methods[nam] = method
+            else:
+                idx += 1
+        self.curly_count -= 1
+        self.classes[name] = {
+            "methods": methods,
+            "params": params,
+            "self": {},
+            "line": line
+        }
+        if not methods.get("init"):
+            self.error(f"missing init() method", f"\b\b\b\b\bclass '{name}'")
+        self.position -= 2
+        self.advance()
+    
+    def interpret(self, variables=None, functions=None, line=None, in_function=False, importing=False, cls=False, classe=None):
         if variables:
             self.variables = variables
         if functions:
@@ -474,6 +568,7 @@ class Interpreter:
                                 new_string = ""
                                 bracket_buffer = ""
                                 bracketing = False
+                                idx = 0
                                 for char in print_value:
                                     if bracketing:
                                         if char == "]":
@@ -508,11 +603,12 @@ class Interpreter:
                                             continue
                                         bracket_buffer += char
                                         continue
-                                    if char == '[':
+                                    if char == '[' and not print_value[idx - 1] == "\\":
                                         bracketing = True
                                         continue
                                     else:
                                         new_string += char
+                                    idx += 1
                                 print_value = new_string
                             print(print_value, end=ending)
                         else:
@@ -1102,9 +1198,11 @@ class Interpreter:
                         lexer = Lexer(f.read(), keywords=keywords)
                         tokens = lexer.tokenize()
                         interpreter = Interpreter(tokens)
-                        vars, funcs = interpreter.interpret(importing=True)
+                        vars, funcs, classes, class_vars = interpreter.interpret(importing=True)
                         self.variables |= vars
                         self.functions |= funcs
+                        self.classes |= classes
+                        self.class_vars |= class_vars
                 elif current_token_value == "split":
                     next = self.peek()
                     if next != ("PARENTHESIS", "("):
@@ -1159,6 +1257,120 @@ class Interpreter:
                     if current_token_value == "break":
                         self.broken = True
                     break
+                elif current_token_value == "class":
+                    name = self.peek()
+                    if name[0] != "IDENTIFIER":
+                        self.error(f"invalid class name '{name[1]}'", self.line)
+                    self.advance()
+                    self.advance()
+                    parameters = []
+                    if self.current_token == ("PARENTHESIS", "("):
+                        self.advance()
+                        pars = self.peek_until(("PARENTHESIS", ")"))
+                        for p in pars:
+                            if p[0] != "IDENTIFIER":
+                                self.error(f"invalid class parameter name '{p[1]}'", self.line)
+                            parameters.append(p[1])
+                    self.skip_block_class(name[1], parameters, self.line)
+                elif current_token_value == "self":
+                    if cls==True:
+                        self.advance()
+                        if self.current_token == ("KEYWORD", "set"):
+                            self.advance()
+                            if self.current_token != ("PARENTHESIS", "("):
+                                self.error("missing opening parenthesis for self set() function", self.line)
+                            self.advance();self.advance();self.advance()
+                            if self.current_token != ("PARENTHESIS", ")"):
+                                self.error("missing closing parenthesis for self set() function", self.line)
+                            self.position -= 3
+                            self.advance()
+                            ident = self.current_token
+                            self.advance()
+                            value = self.current_token
+                            if ident[0] != "IDENTIFIER":
+                                self.error("expected variable as first argument to self set() function", self.line)
+                            if value[0] == "IDENTIFIER":
+                                value = self.variables[value[1]]["value"]
+                            classe["self"][ident[1]] = {
+                                "value": value,
+                                "mutable": False
+                            }
+                            self.variables[ident[1]] = {
+                                "value": value,
+                                "mutable": False
+                            }
+            elif current_token_type == "MODIFIER":
+                if current_token_value == "class_variable":
+                    next = self.peek()
+                    if next != ("PARENTHESIS", "("):
+                        self.error("missing opening parenthesis for @class() modifier", self.line)
+                    next = self.peek(3)
+                    if next != ("PARENTHESIS", ")"):
+                        self.error("missing closing parenthesis for @class() modifier", self.line)
+                    class_ = self.peek(2)
+                    if class_[0] != "IDENTIFIER":
+                        self.error("expected a class name as the argument for  @class() modifier", self.line)
+                    self.advance();self.advance();self.advance();self.advance()
+                    next = self.current_token
+                    if next == ("KEYWORD", "call"):
+                        self.advance()
+                        function = self.current_token
+                        if function[0] != "IDENTIFIER":
+                            self.error("expected class method as call argument", self.line)
+                        self.advance()
+                        next = self.current_token
+                        params = []
+                        if next == ("PARENTHESIS", "("):
+                            self.advance()
+                            params = self.peek_until(("PARENTHESIS", ")"))
+                        new_interp = Interpreter(self.class_variables[class_[1]]["methods"][function[1]])
+                        return_value = new_interp.interpret(variables=self.class_variables[class_[1]]["self"], functions=self.class_variables[class_[1]]["methods"], cls=True, classe=class_, in_function=True)
+                        if self.peek() == ("RETURN_OPERATOR", "->"):
+                            variable_name = self.peek(2)
+                            if variable_name[0] != "IDENTIFIER":
+                                self.error("expected variable as return value for class_variable call function", self.line)
+                            self.variables[variable_name[1]]["value"] = return_value
+                elif current_token_value == "class":
+                    next = self.peek()
+                    if next != ("PARENTHESIS", "("):
+                        self.error("missing opening parenthesis for @class() modifier", self.line)
+                    next = self.peek(3)
+                    if next != ("PARENTHESIS", ")"):
+                        self.error("missing closing parenthesis for @class() modifier", self.line)
+                    class_ = self.peek(2)
+                    if class_[0] != "IDENTIFIER":
+                        self.error("expected a class name as the argument for  @class() modifier", self.line)
+                    self.advance();self.advance();self.advance();self.advance()
+                    next = self.current_token
+                    if next == ("KEYWORD", "new"):
+                        self.advance()
+                        next = self.current_token
+                        if next != ("PARENTHESIS", "("):
+                            self.error("missing opening parenthesis for class new() function", self.line)
+                        self.advance()
+                        args = self.peek_until(("PARENTHESIS", ")"))
+                        idx = 0
+                        for arg in args:
+                            args[idx] = arg[1]
+                            idx += 1
+                        _class_ = self.classes[class_[1]]
+                        new_interp = Interpreter(_class_["methods"]["init"])
+                        parameter_list = {}
+                        idx = 0
+                        for param in _class_["params"]:
+                            parameter_list[param] = {
+                                "value": args[idx],
+                                "mutable": True
+                            }
+                            idx += 1
+                        new_interp.interpret(variables=_class_["self"] | parameter_list, cls=True, classe=_class_)
+                        if self.peek() == ("RETURN_OPERATOR", "->"):
+                            next = self.peek(2)
+                            self.advance();self.advance()
+                            if next[0] != "IDENTIFIER":
+                                self.error("expected variable name as class variable name", self.line)
+                            self.class_variables[next[1]] = _class_
+                        _class_["methods"].pop('init')
             elif current_token_type == "CREMENTATION":
                 left = self.peek(-1)
                 if left[0] == 'IDENTIFIER':
@@ -1212,7 +1424,7 @@ class Interpreter:
                         self.variables[left_value]["value"] = value
             self.advance()
         if importing:
-            return self.variables, self.functions
+            return self.variables, self.functions, self.classes, self.class_variables
         return self.return_value
 
 VERSION_INFO = rf"""{colorama.Fore.CYAN}
@@ -1225,7 +1437,7 @@ VERSION_INFO = rf"""{colorama.Fore.CYAN}
 | $$$$$$$/|  $$$$$$$ /$$$$$$$/|  $$$$$$$| $$  |  $$$$/
 |_______/  \_______/|_______/  \_______/|__/   \___/  
 {colorama.Fore.RESET}
-Basalt Language v1.0.1
+Basalt Language v1.1.0
 Build: 2026-01-27
 """
 
@@ -1261,11 +1473,11 @@ Good To Know:
 These won't be enough however. You'll need to learn other Basalt concepts on your own."""
 
 INFO_TEXT = """Basalt Engine Information:
-  Version: 1.0.0
+  Version: 1.1.0
   Build: 2026-01-17
   Interpreter written in: Python
   Memory usage: probably a lot considering it's Python and this language is unoptimized
-  Interpreter size: probably around 60-70kb (maybe more)
+  Interpreter size: probably around 60-100kb (maybe more)
   Developed by: BasaltDev (i'm not leaking my name bro)
   Developed in: ~3-4 days"""
 
@@ -1306,6 +1518,7 @@ def main():
             tokens = lexer.tokenize()
             interpreter = Interpreter(tokens)
             interpreter.interpret()
+            #print(interpreter.class_variables)
         elif flag in ["-re", "--repl"]:
             print(VERSION_INFO[:-1])
             print("Basalt REPL (Build 2026-01-27)")
