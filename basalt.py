@@ -94,6 +94,12 @@ class Lexer:
                 prefix = "IDENTIFIER"
                 if identifier in self.keywords:
                     prefix = "KEYWORD"
+                elif identifier in ("True", "False"):
+                    prefix = "BOOLEAN"
+                    if identifier == "True":
+                        identifier = True
+                    else:
+                        identifier = False
                 self.tokens.append((prefix, identifier))
             elif self.current_char == "<":
                 if self.peek() == "-" and self.peek(2) == "-":
@@ -197,7 +203,7 @@ class Lexer:
         return self.tokens
     
 class Interpreter:
-    def __init__(self, tokens):
+    def __init__(self, tokens, repl=False):
         global argv
         global parent_folder
         self.tokens = tokens
@@ -207,15 +213,26 @@ class Interpreter:
             "argv": {
                 "value": argv[1:],
                 "mutable": False
-            }
+            },
+            "argc": {
+                "value": argc - 2,
+                "mutable": False
+            },
+            "null": {
+                "value": None,
+                "mutable": False
+            },
         }
+        self.broken = False
         self.functions = {}
         self.curly_count = 0
         self.return_value = None
         self.if_statement_truth_table = {
 
         }
+        self.error_output = ""
         self.line = 1
+        self.repl = repl
 
     def advance(self):
         self.position += 1
@@ -243,6 +260,7 @@ class Interpreter:
         yellow = colorama.Fore.YELLOW
         reset = colorama.Fore.RESET
         print(f"{red}Error at line {yellow}{line}{red}: {error_message}{reset}")
+        self.error_output = error_message
         sys.exit(1)
     
     def issue(self, issue_message, line):
@@ -281,8 +299,12 @@ class Interpreter:
                 if right_type == "IDENTIFIER":
                     right_value = self.variables[right_value]["value"]
                 if type(left_value) == str:
+                    left_value = left_value.replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t").replace("\b", "\\b")
+                    left_value = left_value.replace("\\", "")
                     left_value = f"\"{left_value}\""
                 if type(right_value) == str:
+                    right_value = right_value.replace("\"", "\\\"").replace("\n", "\\n").replace("\t", "\\t").replace("\b", "\\b")
+                    right_value = right_value.replace("\\", "")
                     right_value = f"\"{right_value}\""
                 statement.append([left_value, item_value, right_value])
             elif item_value in ('and', 'or', 'not'):
@@ -296,6 +318,7 @@ class Interpreter:
                     parsed += str(i).replace("\n", "") + " "
             else:
                 parsed += str(item) + " "
+        parsed = parsed.replace('"""', '""')
         evaluated = eval(parsed)
         return evaluated
 
@@ -349,6 +372,8 @@ class Interpreter:
         for _ in range(0, amount):
             new_interpreter = Interpreter(repeat)
             new_interpreter.interpret(variables=self.variables, functions=self.functions, line=self.line)
+            if new_interpreter.broken:
+                break
         self.advance()
     
     def skip_block_foreach(self, condition):
@@ -389,6 +414,8 @@ class Interpreter:
             }
             new_interpreter = Interpreter(foreach)
             new_interpreter.interpret(variables=variables, functions=self.functions, line=self.line)
+            if new_interpreter.broken:
+                break
         self.advance()
     
     def skip_block_while(self, condition):
@@ -414,6 +441,8 @@ class Interpreter:
         while self.parse_condition(condition):
             new_interpreter = Interpreter(repeat)
             new_interpreter.interpret(variables=self.variables, functions=self.functions, line=self.line)
+            if new_interpreter.broken:
+                break
         self.advance()
     
     def interpret(self, variables=None, functions=None, line=None, in_function=False, importing=False):
@@ -1026,6 +1055,8 @@ class Interpreter:
                     next_type, next_value = next[0], next[1]
                     if next_type != "IDENTIFIER":
                         self.error("expected variable to convert value of", self.line)
+                    if not self.variables[next_value]["mutable"]:
+                        self.error(f"cannot change value of immutable variable '{next_value}'", self.line)
                     if current_token_value == "int":
                         self.variables[next_value]["value"] = int(self.variables[next_value]["value"])
                     elif current_token_value == "float":
@@ -1095,6 +1126,39 @@ class Interpreter:
                     else:
                         splitted = variable.split(to_split)
                     self.variables[next]["value"] = splitted
+                elif current_token_value in ("alpha", "digit", "alnum"):
+                    command = current_token_value
+                    self.advance()
+                    next = self.current_token
+                    if next != ("PARENTHESIS", "("):
+                        self.error("missing opening parenthesis for alpha()/digit()/alnum() function")
+                    self.advance()
+                    val1 = self.current_token
+                    if val1[0] == "IDENTIFIER":
+                        val1 = self.variables[val1[1]]["value"]
+                    else:
+                        val1 = val1[1]
+                    self.advance()
+                    val2 = self.current_token
+                    if val2[0] != "IDENTIFIER":
+                        self.error("expected variable as 2nd argument to alpha()/digit()/alnum() function")
+                    self.advance()
+                    next = self.current_token
+                    if next != ("PARENTHESIS", ")"):
+                        self.error("missing closing parenthesis for alpha()/digit()/alnum() function")
+                    if command == "alpha":
+                        alpha = val1.isalpha()
+                        self.variables[val2[1]]["value"] = 1 if alpha else 0
+                    elif command == "digit":
+                        digit = val1.isdigit()
+                        self.variables[val2[1]]["value"] = 1 if digit else 0
+                    elif command == "alnum":
+                        alnum = val1.isalnum()
+                        self.variables[val2[1]]["value"] = 1 if alnum else 0
+                elif current_token_value in ("break", "continue"):
+                    if current_token_value == "break":
+                        self.broken = True
+                    break
             elif current_token_type == "CREMENTATION":
                 left = self.peek(-1)
                 if left[0] == 'IDENTIFIER':
@@ -1151,7 +1215,7 @@ class Interpreter:
             return self.variables, self.functions
         return self.return_value
 
-VERSION_INFO = r"""
+VERSION_INFO = rf"""{colorama.Fore.CYAN}
  /$$$$$$$                                /$$   /$$    
 | $$__  $$                              | $$  | $$    
 | $$  \ $$  /$$$$$$   /$$$$$$$  /$$$$$$ | $$ /$$$$$$  
@@ -1160,8 +1224,8 @@ VERSION_INFO = r"""
 | $$  \ $$ /$$__  $$ \____  $$ /$$__  $$| $$  | $$ /$$
 | $$$$$$$/|  $$$$$$$ /$$$$$$$/|  $$$$$$$| $$  |  $$$$/
 |_______/  \_______/|_______/  \_______/|__/   \___/  
-
-Basalt Language v1.0.0
+{colorama.Fore.RESET}
+Basalt Language v1.0.1
 Build: 2026-01-27
 """
 
@@ -1172,6 +1236,7 @@ Flags:
   -h, --help        Show this help menu
   -i, --info        Show engine stats (kind of a flex)
   -r, --run         Run a .basalt file
+  -re, --repl       Run the Basalt REPL (BETA)
 
 Basalt Syntax:
   fn name() { }                         Define a function
@@ -1232,7 +1297,7 @@ def main():
                 print("Error: -r/--run flag requires a file name")
                 return
             global parent_folder
-            parent_folder = os.path.dirname(os.path.abspath(argv[-1]))
+            parent_folder = os.path.dirname(os.path.abspath(argv[0]))
             if not os.path.exists(os.path.join(parent_folder, os.path.basename(argv[0]))):
                 print("Error: Expected an actually existing file to run")
                 return
@@ -1241,6 +1306,23 @@ def main():
             tokens = lexer.tokenize()
             interpreter = Interpreter(tokens)
             interpreter.interpret()
+        elif flag in ["-re", "--repl"]:
+            print(VERSION_INFO[:-1])
+            print("Basalt REPL (Build 2026-01-27)")
+            try:
+                variables, functions = {}, {}
+                while 1 == 1:
+                    command = input("> ")
+                    lexer = Lexer(command, keywords=keywords)
+                    tokens = lexer.tokenize()
+                    interpreter = Interpreter(tokens, repl=True)
+                    try:
+                        variables, functions = interpreter.interpret(variables=variables, functions=functions, importing=True)
+                    except:
+                        pass
+                    print()
+            except:
+                sys.exit()
         else:
             print(VERSION_INFO)
             print("Usage: basalt [-flag/--flag] [file.basalt]")
