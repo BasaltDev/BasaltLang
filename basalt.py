@@ -282,15 +282,12 @@ class Interpreter:
                 self.line += 1
             if self.current_token[1] == "{":
                 brace_count += 1
-                self.curly_count += 1
             elif self.current_token[1] == "}":
                 brace_count -= 1
-                self.curly_count -= 1
                 if brace_count == 0:
                     self.advance()
                     break
             self.advance()
-        self.curly_count -= 1
     
     def parse_condition(self, condition):
         # translate into something easier to understand
@@ -340,15 +337,12 @@ class Interpreter:
                     function.append(self.current_token)
                 if self.current_token[1] == "{":
                     brace_count += 1
-                    self.curly_count += 1
                 elif self.current_token[1] == "}":
                     brace_count -= 1
-                    self.curly_count -= 1
                     if brace_count == 0:
                         self.advance()
                         break
                 self.advance()
-            self.curly_count -= 1
             self.functions[name] = {
                 "tokens": function[1:-1],
                 "params": params,
@@ -369,10 +363,8 @@ class Interpreter:
                     function_tokens.append(token)
                 if token[1] == "{":
                     brace_count += 1
-                    self.curly_count += 1
                 elif token[1] == "}":
                     brace_count -= 1
-                    self.curly_count -= 1
                     if brace_count == 0:
                         idx += 1
                         break
@@ -393,15 +385,12 @@ class Interpreter:
                 repeat.append(self.current_token)
             if self.current_token[1] == "{":
                 brace_count += 1
-                self.curly_count += 1
             elif self.current_token[1] == "}":
                 brace_count -= 1
-                self.curly_count -= 1
                 if brace_count == 0:
                     self.advance()
                     break
             self.advance()
-        self.curly_count -= 1
         self.position -= 2
         for _ in range(0, amount):
             new_interpreter = Interpreter(repeat)
@@ -420,15 +409,12 @@ class Interpreter:
                 foreach.append(self.current_token)
             if self.current_token[1] == "{":
                 brace_count += 1
-                self.curly_count += 1
             elif self.current_token[1] == "}":
                 brace_count -= 1
-                self.curly_count -= 1
                 if brace_count == 0:
                     self.advance()
                     break
             self.advance()
-        self.curly_count -= 1
         self.position -= 2
         if condition[1] != ("KEYWORD", "in"):
             self.error("missing 'in' keyword between foreach values (shocking, i know)", self.line)
@@ -462,15 +448,12 @@ class Interpreter:
                 repeat.append(self.current_token)
             if self.current_token[1] == "{":
                 brace_count += 1
-                self.curly_count += 1
             elif self.current_token[1] == "}":
                 brace_count -= 1
-                self.curly_count -= 1
                 if brace_count == 0:
                     self.advance()
                     break
             self.advance()
-        self.curly_count -= 1
         self.position -= 2
         while self.parse_condition(condition):
             new_interpreter = Interpreter(repeat)
@@ -489,10 +472,8 @@ class Interpreter:
                 class_.append(self.current_token)
             if self.current_token[1] == "{":
                 brace_count += 1
-                self.curly_count += 1
             elif self.current_token[1] == "}":
                 brace_count -= 1
-                self.curly_count -= 1
                 if brace_count == 0:
                     self.advance()
                     break
@@ -527,7 +508,6 @@ class Interpreter:
                 methods[nam] = method
             else:
                 idx += 1
-        self.curly_count -= 1
         self.classes[name] = {
             "methods": methods,
             "params": params,
@@ -775,7 +755,6 @@ class Interpreter:
                 elif current_token_value == "if":
                     self.advance()
                     condition = self.peek_until(("CURLY", "{"))
-                    self.curly_count += 1
                     truth = self.parse_condition(condition)
                     if not self.if_statement_truth_table.get(self.curly_count):
                         self.if_statement_truth_table[self.curly_count] = [truth]
@@ -786,9 +765,8 @@ class Interpreter:
                         continue
                 elif current_token_value == "elseif":
                     self.advance()
-                    previous_truths = self.if_statement_truth_table[self.curly_count + 1]
+                    previous_truths = self.if_statement_truth_table[self.curly_count]
                     condition = self.peek_until(("CURLY", "{"))
-                    self.curly_count += 1
                     truth = True
                     if True in previous_truths:
                         truth = False
@@ -799,17 +777,18 @@ class Interpreter:
                         self.skip_block()
                         continue
                 elif current_token_value == "else":
+                    #print(self.if_statement_truth_table)
                     self.advance()
-                    previous_truths = self.if_statement_truth_table[self.curly_count + 1]
+                    previous_truth = self.if_statement_truth_table[self.curly_count]
                     condition = self.peek_until(("CURLY", "{"))
-                    self.curly_count += 1
                     truth = True
-                    if True in previous_truths:
+                    if previous_truth[-1] == True:
                         truth = False
-                    del self.if_statement_truth_table[self.curly_count]
                     if not truth:
                         self.skip_block()
+                        self.if_statement_truth_table[self.curly_count].pop(-1)
                         continue
+                    self.if_statement_truth_table[self.curly_count].pop(-1)
                 elif current_token_value == "fn":
                     self.advance()
                     name_type = self.current_token[0]
