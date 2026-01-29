@@ -1,6 +1,8 @@
 # Basalt Interpreter - Copyright (c) 2026 BasaltDev
 # Licensed under the MIT License.
 
+# Features: prints, variables, lists, functions, conditionals (if/elseif/else), loops (while/repeat/foreach), lists and dicts, file I/O, string list and dict methods, random() function, classes, mut()/immut() keywords for changing variable mutability, modifiers (@class(cls) new("hi") -> a), file importing, etc...
+
 import colorama
 import os
 import time
@@ -394,7 +396,7 @@ class Interpreter:
         self.position -= 2
         for _ in range(0, amount):
             new_interpreter = Interpreter(repeat)
-            new_interpreter.interpret(variables=self.variables, functions=self.functions, line=self.line)
+            new_interpreter.interpret(variables=self.variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line)
             if new_interpreter.broken:
                 break
         self.advance()
@@ -433,7 +435,7 @@ class Interpreter:
                 "mutable": True
             }
             new_interpreter = Interpreter(foreach)
-            new_interpreter.interpret(variables=variables, functions=self.functions, line=self.line)
+            new_interpreter.interpret(variables=variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line)
             if new_interpreter.broken:
                 break
         self.advance()
@@ -457,7 +459,7 @@ class Interpreter:
         self.position -= 2
         while self.parse_condition(condition):
             new_interpreter = Interpreter(repeat)
-            new_interpreter.interpret(variables=self.variables, functions=self.functions, line=self.line)
+            new_interpreter.interpret(variables=self.variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line)
             if new_interpreter.broken:
                 break
         self.advance()
@@ -519,11 +521,15 @@ class Interpreter:
         self.position -= 2
         self.advance()
     
-    def interpret(self, variables=None, functions=None, line=None, in_function=False, importing=False, cls=False, classe=None):
+    def interpret(self, variables=None, functions=None, clses=None, class_vars=None, line=None, in_function=False, importing=False, cls=False, classe=None):
         if variables:
             self.variables = variables
         if functions:
             self.functions = functions
+        if clses:
+            self.classes = clses
+        if class_vars:
+            self.class_variables = class_vars
         if line:
             self.line = line
         while self.current_token is not None:
@@ -1303,9 +1309,11 @@ class Interpreter:
                             self.advance()
                             params = self.peek_until(("PARENTHESIS", ")"))
                         new_interp = Interpreter(self.class_variables[class_[1]]["methods"][function[1]])
-                        return_value = new_interp.interpret(variables=self.class_variables[class_[1]]["self"], functions=self.class_variables[class_[1]]["methods"], cls=True, classe=class_, in_function=True)
+                        return_value = new_interp.interpret(variables=self.class_variables[class_[1]]["self"], functions=self.class_variables[class_[1]]["methods"], cls=True, classe=self.class_variables[class_[1]], in_function=True)
                         if self.peek() == ("RETURN_OPERATOR", "->"):
                             variable_name = self.peek(2)
+                            self.advance()
+                            self.advance()
                             if variable_name[0] != "IDENTIFIER":
                                 self.error("expected variable as return value for class_variable call function", self.line)
                             self.variables[variable_name[1]]["value"] = return_value
@@ -1349,7 +1357,6 @@ class Interpreter:
                             if next[0] != "IDENTIFIER":
                                 self.error("expected variable name as class variable name", self.line)
                             self.class_variables[next[1]] = _class_
-                        _class_["methods"].pop('init')
             elif current_token_type == "CREMENTATION":
                 left = self.peek(-1)
                 if left[0] == 'IDENTIFIER':
@@ -1502,17 +1509,16 @@ def main():
             print(VERSION_INFO[:-1])
             print("Basalt REPL (Build 2026-01-27)")
             try:
-                variables, functions = {}, {}
+                variables, functions, classes, class_variables = {}, {}, {}, {}
                 while 1 == 1:
                     command = input("> ")
                     lexer = Lexer(command, keywords=keywords)
                     tokens = lexer.tokenize()
                     interpreter = Interpreter(tokens, repl=True)
                     try:
-                        variables, functions = interpreter.interpret(variables=variables, functions=functions, importing=True)
+                        variables, functions, classes, class_variables = interpreter.interpret(variables=variables, functions=functions, clses=classes, class_vars=class_variables, importing=True)
                     except:
                         pass
-                    print()
             except:
                 sys.exit()
         else:
