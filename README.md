@@ -1,3 +1,5 @@
+# (DISCLAIMER: DO NOT DOWNLOAD BASALT.EXE, your antivirus may detect a false positive and we recommend downloading the python source code directly for now)
+
 # Basalt
 ## A rock-solid programming language
 Basalt is a lightweight programming language built by 1 person over the course of ~3-4 days designed for simplicity and ease-of-use (don't quote me on that) written in Python.
