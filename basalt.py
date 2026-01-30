@@ -1,8 +1,6 @@
 # Basalt Interpreter - Copyright (c) 2026 BasaltDev
 # Licensed under the MIT License.
 
-# Features: prints, variables, lists, functions, conditionals (if/elseif/else), loops (while/repeat/foreach), lists and dicts, file I/O, string list and dict methods, random() function, classes, mut()/immut() keywords for changing variable mutability, modifiers (@class(cls) new("hi") -> a), file importing, etc...
-
 import colorama
 import os
 import time
@@ -187,10 +185,10 @@ class Lexer:
                 if self.peek() == "=":
                     self.tokens.append(("ARITHMETIC_ASSIGNMENT", "^="))
                     self.advance()
-            elif self.current_char == ",":
-                self.tokens.append(("COMMA", ","))
-            elif self.current_char == ".":
-                self.tokens.append(("PERIOD", "."))
+            #elif self.current_char == ",":
+            #    self.tokens.append(("COMMA", ","))
+            #elif self.current_char == ".":
+            #    self.tokens.append(("PERIOD", "."))
             elif self.current_char == ";":
                 self.tokens.append(("SEMICOLON", ";"))
             elif self.current_char == ":":
@@ -216,6 +214,7 @@ class Interpreter:
         self.tokens = tokens
         self.position = 0
         self.current_token = self.tokens[self.position]
+        self.interfaces = {}
         self.variables = {
             "argv": {
                 "value": argv[1:],
@@ -315,6 +314,11 @@ class Interpreter:
                 statement.append([left_value, item_value, right_value])
             elif item_value in ('and', 'or', 'not'):
                 statement.append(item_value)
+            elif item_value in (True, False):
+                if item_type != "BOOLEAN":
+                    idx += 1
+                    continue
+                statement.append([item_value, '==', item_value])
             idx += 1
         # convert it into python logic
         parsed = ""
@@ -328,7 +332,7 @@ class Interpreter:
         evaluated = eval(parsed)
         return evaluated
 
-    def skip_block_function(self, name, params, line, class_method=False, tokens=[], indx=0):
+    def skip_block_function(self, name, params, line, class_method=False, tokens=[], indx=0, final=False):
         brace_count = 0
         if not class_method:
             function = []
@@ -345,10 +349,14 @@ class Interpreter:
                         self.advance()
                         break
                 self.advance()
+            if name in self.functions:
+                if self.functions[name]["final"]:
+                    self.error(f"cannot redefine @final function '{name}'", self.line)
             self.functions[name] = {
                 "tokens": function[1:-1],
                 "params": params,
-                "line": line
+                "line": line,
+                "final": final
             }
             self.position -= 2
             self.advance()
@@ -428,16 +436,28 @@ class Interpreter:
         if variable[0] == "IDENTIFIER":
             variable = variable[1]
         foreach = foreach[5:-1]
-        for i in right:
-            variables = self.variables
-            variables[variable] = {
-                "value": i,
-                "mutable": True
-            }
-            new_interpreter = Interpreter(foreach)
-            new_interpreter.interpret(variables=variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line)
-            if new_interpreter.broken:
-                break
+        if type(right) == dict:
+            for key,value in right.items():
+                variables = self.variables
+                variables[variable] = {
+                    "value": [key,value],
+                    "mutable": True
+                }
+                new_interpreter = Interpreter(foreach)
+                new_interpreter.interpret(variables=variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line)
+                if new_interpreter.broken:
+                    break
+        else:
+            for i in right:
+                variables = self.variables
+                variables[variable] = {
+                    "value": i,
+                    "mutable": True
+                }
+                new_interpreter = Interpreter(foreach)
+                new_interpreter.interpret(variables=variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line)
+                if new_interpreter.broken:
+                    break
         self.advance()
     
     def skip_block_while(self, condition):
@@ -464,7 +484,7 @@ class Interpreter:
                 break
         self.advance()
     
-    def skip_block_class(self, name, params, line):
+    def skip_block_class(self, name, params, line, inheriting=None, interfacing=None):
         brace_count = 0
         class_ = []
         while self.current_token is not None:
@@ -510,18 +530,42 @@ class Interpreter:
                 methods[nam] = method
             else:
                 idx += 1
-        self.classes[name] = {
-            "methods": methods,
-            "params": params,
-            "self": {},
-            "line": line
-        }
+        if inheriting:
+            inheritance = self.classes[inheriting]
+            self.classes[name] = {
+                "methods": inheritance["methods"] | methods,
+                "params": list(set(inheritance["params"]) | set(params)),
+                "self": {},
+                "line": line
+            }
+        elif interfacing:
+            idx = 0
+            for method in self.interfaces[interfacing]["methods"]:
+                if not method in methods:
+                    self.error(f"missing '{method}' class method according to interface '{interfacing}'", self.line)
+                for param in self.interfaces[interfacing]["methods"][method]:
+                    if not param in params:
+                        self.error(f"missing '{param}' class parameter according to interface '{interfacing}'", self.line)
+                idx += 1
+            self.classes[name] = {
+                "methods": methods,
+                "params": list(set(self.interfaces[interfacing]["params"]) | set(params)),
+                "self": {},
+                "line": line
+            }
+        else:
+            self.classes[name] = {
+                "methods": methods,
+                "params": params,
+                "self": {},
+                "line": line
+            }
         if not methods.get("init"):
             self.error(f"missing init() method", f"\b\b\b\b\bclass '{name}'")
         self.position -= 2
         self.advance()
     
-    def interpret(self, variables=None, functions=None, clses=None, class_vars=None, line=None, in_function=False, importing=False, cls=False, classe=None):
+    def interpret(self, variables=None, functions=None, clses=None, class_vars=None, line=None, in_function=False, importing=False, cls=False, classe=None, interfs=None):
         if variables:
             self.variables = variables
         if functions:
@@ -530,9 +574,15 @@ class Interpreter:
             self.classes = clses
         if class_vars:
             self.class_variables = class_vars
+        if interfs:
+            self.interfaces = interfs
         if line:
             self.line = line
         while self.current_token is not None:
+            for variable, value in self.variables.items():
+                if value.get("type"):
+                    if type(value["value"]).__name__ != value.get("type"):
+                        self.error(f"'{variable}' variable's value type changed, but type annotation restricts value of '{variable}' to be {value.get('type')}", self.line)
             current_token_type = self.current_token[0]
             current_token_value = self.current_token[1]
             if current_token_type == "NEWLINE":
@@ -602,6 +652,10 @@ class Interpreter:
                     else:
                         self.error("missing opening parenthesis", self.line)
                 elif current_token_value == "let":
+                    prev_token = self.peek(-1)
+                    vartype=None
+                    if prev_token[0] == "MODIFIER":
+                        vartype=prev_token[1]
                     next_token_type, next_token_value = self.peek()[0], self.peek()[1]
                     mutable = False
                     index = 0
@@ -677,6 +731,15 @@ class Interpreter:
                             "value": next_token_value,
                             "mutable": mutable
                         }
+                        if vartype:
+                            if type(next_token_value).__name__ != vartype:
+                                self.error(f"expected {vartype} value, not {type(next_token_value).__name__} value according to type annotation", self.line)
+                            else:
+                                self.variables[variable_name] = {
+                                    "value": next_token_value,
+                                    "mutable": mutable,
+                                    "type": vartype
+                                }
                         if var_val == "argv" or type(next_token_value) not in (list, dict):
                             self.advance(); self.advance(); self.advance()
                 elif current_token_value in ("mut", "immut"):
@@ -769,6 +832,17 @@ class Interpreter:
                     if not truth:
                         self.skip_block()
                         continue
+                elif current_token_value == "unless":
+                    self.advance()
+                    condition = self.peek_until(("CURLY", "{"))
+                    truth = self.parse_condition(condition)
+                    if not self.if_statement_truth_table.get(self.curly_count):
+                        self.if_statement_truth_table[self.curly_count] = [not truth]
+                    else:
+                        self.if_statement_truth_table[self.curly_count].append(not truth)
+                    if truth:
+                        self.skip_block()
+                        continue
                 elif current_token_value == "elseif":
                     self.advance()
                     previous_truths = self.if_statement_truth_table[self.curly_count]
@@ -796,6 +870,10 @@ class Interpreter:
                         continue
                     self.if_statement_truth_table[self.curly_count].pop(-1)
                 elif current_token_value == "fn":
+                    previous = self.peek(-1)
+                    final = False
+                    if previous == ("MODIFIER", "final"):
+                        final = True
                     self.advance()
                     name_type = self.current_token[0]
                     name_value = self.current_token[1]
@@ -805,7 +883,7 @@ class Interpreter:
                     next_token = self.current_token
                     params = []
                     if next_token == ("CURLY", "{"):
-                        self.skip_block_function(name_value, params, self.line)
+                        self.skip_block_function(name_value, params, self.line, final=final)
                     elif next_token == ("SQUARE", "[") or next_token == ("PARENTHESIS", "("):
                         self.advance()
                         if next_token == ("SQUARE", "["):
@@ -819,7 +897,7 @@ class Interpreter:
                         self.advance()
                         next_token = self.current_token
                         if next_token == ("CURLY", "{"):
-                            self.skip_block_function(name_value, params, self.line)
+                            self.skip_block_function(name_value, params, self.line, final=final)
                         else:
                             self.error("missing opening curly brace for function", self.line)
                 elif current_token_value == "call":
@@ -861,6 +939,8 @@ class Interpreter:
                             value = variable[1]
                             if type_ != "IDENTIFIER":
                                 self.error(f"invalid variable '{value}' getting passed as return variable in function call", self.line)
+                            if not self.variables[value]["mutable"]:
+                                self.error(f"cannot change value of immutable variable '{value}'", self.line)
                             self.variables[value]["value"] = returned
                 elif current_token_value == "return":
                     to_return = self.peek()
@@ -1033,6 +1113,8 @@ class Interpreter:
                             variable_name = self.current_token
                             if variable_name[0] != "IDENTIFIER":
                                 self.error("expected variable to return list length to", self.line)
+                            if not self.variables[variable_name[1]]["mutable"]:
+                                self.error(f"cannot change immutable value of variable {variable_name[1]}", self.line)
                             self.variables[variable_name[1]]["value"] = len(list_["value"])
                             next = self.peek()
                             if next != ("PARENTHESIS", ")"):
@@ -1041,6 +1123,8 @@ class Interpreter:
                             next = self.peek()
                             if next != ("PARENTHESIS", ")"):
                                 self.error("missing closing parenthesis for list function", self.line)
+                            if not self.variables[next_token_value]["mutable"]:
+                                self.error(f"cannot change immutable value of variable {next_token_value}", self.line)
                             self.variables[next_token_value]["value"].pop(next_token_val)
                         elif type_ == "pop":
                             next = self.peek(2)
@@ -1050,6 +1134,8 @@ class Interpreter:
                             variable = self.peek()
                             if variable[0] != "IDENTIFIER":
                                 self.error("expected variable to return list value to", self.line)
+                            if not self.variables[variable[1]]["mutable"]:
+                                self.error(f"cannot change immutable value of variable '{variable[1]}'", self.line)
                             self.variables[variable[1]]["value"] = self.variables[next_token_value]["value"].pop(index)
                         elif type_ == "get":
                             next = self.peek(2)
@@ -1097,6 +1183,8 @@ class Interpreter:
                         next = next[1]
                     key = next
                     if command[1] == "delete":
+                        if not self.variables[dict_name]["mutable"]:
+                            self.error(f"cannot change immutable value of variable '{dict_name}'", self.line)
                         self.variables[dict_name]["value"].pop(key)
                         continue
                     self.advance()
@@ -1104,8 +1192,12 @@ class Interpreter:
                     if command[1] == "get":
                         if next[0] != "IDENTIFIER":
                             self.error("expected variable to return dict get() function value to", self.line)
+                        if not self.variables[next[1]]["mutable"]:
+                            self.error(f"cannot change immutable value of variable '{next[1]}'", self.line)
                         self.variables[next[1]]["value"] = self.variables[dict_name]["value"][key]
                     elif command[1] == "set":
+                        if not self.variables[dict_name]["mutable"]:
+                            self.error(f"cannot change immutable value of variable '{dict_name}'", self.line)
                         if next[0] == "IDENTIFIER":
                             self.variables[dict_name]["value"][key] = self.variables[next[1]]["value"]
                         else:
@@ -1122,8 +1214,12 @@ class Interpreter:
                     if value[0] != "IDENTIFIER":
                         self.error("invalid argument passed to ascii function", self.line)
                     if current_token_value == "ascii_char":
+                        if not self.variables[value[1]]["mutable"]:
+                            self.error(f"cannot change immutable value of variable '{value[1]}'", self.line)
                         self.variables[value[1]]["value"] = chr(self.variables[value[1]]["value"])
                     elif current_token_value == "char_ascii":
+                        if not self.variables[value[1]]["mutable"]:
+                            self.error(f"cannot change immutable value of variable '{value[1]}'", self.line)
                         self.variables[value[1]]["value"] = ord(self.variables[value[1]]["value"])
                 elif current_token_value in ("int", "float", "str"):
                     next = self.peek()
@@ -1208,6 +1304,8 @@ class Interpreter:
                         splitted = variable.split()
                     else:
                         splitted = variable.split(to_split)
+                    if not self.variables[next]["mutable"]:
+                        self.error(f"cannot change immutable value of variable '{next}'", self.line)
                     self.variables[next]["value"] = splitted
                 elif current_token_value in ("alpha", "digit", "alnum"):
                     command = current_token_value
@@ -1229,6 +1327,8 @@ class Interpreter:
                     next = self.current_token
                     if next != ("PARENTHESIS", ")"):
                         self.error("missing closing parenthesis for alpha()/digit()/alnum() function")
+                    if not self.variables[val2[1]]["mutable"]:
+                        self.error(f"cannot change immutable value of variable '{val2[1]}'", self.line)
                     if command == "alpha":
                         alpha = val1.isalpha()
                         self.variables[val2[1]]["value"] = 1 if alpha else 0
@@ -1256,7 +1356,24 @@ class Interpreter:
                             if p[0] != "IDENTIFIER":
                                 self.error(f"invalid class parameter name '{p[1]}'", self.line)
                             parameters.append(p[1])
-                    self.skip_block_class(name[1], parameters, self.line)
+                        self.advance()
+                    inheritance=None
+                    interface=None
+                    if self.current_token == ("COLON", ":"):
+                        self.advance()
+                        inheritance = self.current_token
+                        if inheritance[0] not in ("IDENTIFIER", "DOLLAR"):
+                            self.error("expected class to inherit from (or interface), not other type", self.line)
+                        if inheritance[0] == "IDENTIFIER":
+                            inheritance = inheritance[1]
+                        elif inheritance[0] == "DOLLAR":
+                            self.advance()
+                            inheritance = None
+                            interface = self.current_token
+                            if interface[0] != "IDENTIFIER":
+                                self.error("expected interface to interface with, not other", self.line)
+                            interface = interface[1]
+                    self.skip_block_class(name[1], parameters, self.line, inheriting=inheritance, interfacing=interface)
                 elif current_token_value == "self":
                     if cls==True:
                         self.advance()
@@ -1282,8 +1399,137 @@ class Interpreter:
                             }
                             self.variables[ident[1]] = {
                                 "value": value,
-                                "mutable": False
+                                "mutable": True
                             }
+                        elif self.current_token == ("KEYWORD", "get"):
+                            self.advance()
+                            if self.current_token != ("PARENTHESIS", "("):
+                                self.error("missing opening parenthesis for self get() function", self.line)
+                            self.advance();self.advance();self.advance()
+                            if self.current_token != ("PARENTHESIS", ")"):
+                                self.error("missing closing parenthesis for self get() function", self.line)
+                            self.position -= 3
+                            self.advance()
+                            ident = self.current_token
+                            self.advance()
+                            value = self.current_token
+                            if ident[0] != "IDENTIFIER":
+                                self.error("expected variable as first argument to self get() function", self.line)
+                            #print(value, ident, classe)
+                            self.variables[value[1]] = {
+                                "value": classe["self"][ident[1]]["value"],
+                                "mutable": True
+                            }
+                elif current_token_value == "assert":
+                    self.advance(); next = self.current_token
+                    if next != ("PARENTHESIS", "("):
+                        self.error("missing opening parenthesis for assert function", self.line)
+                    self.advance(); self.advance(); next = self.current_token
+                    if next != ("PARENTHESIS", ")"):
+                        self.error("missing closing parenthesis for assert function", self.line)
+                    self.position -= 2
+                    self.advance()
+                    next = self.current_token
+                    if next[0] == "IDENTIFIER":
+                        next = self.variables[next[1]]["value"]
+                    else:
+                        next = next[1]
+                    name = next
+                    self.advance()
+                    self.advance()
+                    if self.current_token != ("CURLY", "{"):
+                        self.error("expected opening curly braces for assert function", self.line)
+                    self.advance()
+                    condition = self.peek_until(("CURLY", "}"))
+                    truth = self.parse_condition(condition)
+                    if not truth:
+                        self.error(f"\b\b from assertion: {name}", self.line)
+                elif current_token_value == "enum":
+                    self.advance()
+                    name = self.current_token
+                    if name[0] != "IDENTIFIER":
+                        self.error(f"invalid enum name '{name[1]}", self.line)
+                    self.advance()
+                    next = self.current_token
+                    if next != ("CURLY", "{"):
+                        self.error("expected opening curly brace", self.line)
+                    self.advance()
+                    old_enum_vars = self.peek_until(("CURLY", "}"))
+                    enum_vars = []
+                    for item in old_enum_vars:
+                        if item[0] == "IDENTIFIER":
+                            enum_vars.append(item[1])
+                    idx = 0
+                    for var in enum_vars:
+                        if self.variables.get(var):
+                            self.error(f"naming conflict with enum variable '{var}' and variable '{var}'", self.line)
+                        self.variables[var] = {
+                            "value": idx,
+                            "mutable": False
+                        }
+                        idx += 1
+                elif current_token_value == "switch":
+                    self.advance()
+                    if self.current_token != ("PARENTHESIS", "("):
+                        self.error("missing opening parenthesis for switch", self.line)
+                    self.advance()
+                    self.advance()
+                    if self.current_token != ("PARENTHESIS", ")"):
+                        self.error("missing closing parenthesis for switch", self.line)
+                    self.position -= 2
+                    self.advance()
+                    variable = self.current_token
+                    if variable[0] != "IDENTIFIER":
+                        self.error(f"invalid variable name '{variable[1]}'", self.line)
+                    variable = variable[1]
+                    self.advance()
+                    self.advance()
+                    self.advance()
+                    curly_count = 1
+                    while self.current_token is not None:
+                        if self.current_token == ("CURLY", "{"):
+                            curly_count += 1
+                            if self.peek(-2) == ("KEYWORD", "case"):
+                                case = self.peek(-1)
+                                if case[0] == "IDENTIFIER":
+                                    case = self.variables[case[1]]["value"]
+                                else:
+                                    case = case[1]
+                                #print(self.variables[variable]["value"], case)
+                                if self.variables[variable]["value"] != case:
+                                    self.skip_block()
+                                else:
+                                    tokens = []
+                                    first = True
+                                    while curly_count != 1 and self.current_token is not None:
+                                        if first:
+                                            tokens.append(self.current_token)
+                                        if self.current_token == ("CURLY", "}"):
+                                            curly_count -= 1
+                                            if first:
+                                                first = False
+                                        elif self.current_token == ("CURLY", "{"):
+                                            curly_count += 1
+                                        self.advance()
+                                    new = Interpreter(tokens)
+                                    new.interpret(variables=self.variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line, interfs=self.interfaces)
+                                    break
+                            elif self.peek(-1) == ("KEYWORD", "default"):
+                                tokens = []
+                                first = True
+                                while curly_count != 1 and self.current_token is not None:
+                                    if first:
+                                        tokens.append(self.current_token)
+                                    if self.current_token == ("CURLY", "}"):
+                                        curly_count -= 1
+                                        if first:
+                                            first = False
+                                    elif self.current_token == ("CURLY", "{"):
+                                        curly_count += 1
+                                    self.advance()
+                                new = Interpreter(tokens)
+                                new.interpret(variables=self.variables, functions=self.functions, clses=self.classes, class_vars=self.class_variables, line=self.line, interfs=self.interfaces)
+                        self.advance()
             elif current_token_type == "MODIFIER":
                 if current_token_value == "class_variable":
                     next = self.peek()
@@ -1316,6 +1562,8 @@ class Interpreter:
                             self.advance()
                             if variable_name[0] != "IDENTIFIER":
                                 self.error("expected variable as return value for class_variable call function", self.line)
+                            if not self.variables[variable_name[1]]["mutable"]:
+                                self.error(f"cannot change immutable value of variable '{variable_name[1]}'", self.line)
                             self.variables[variable_name[1]]["value"] = return_value
                 elif current_token_value == "class":
                     next = self.peek()
@@ -1357,6 +1605,8 @@ class Interpreter:
                             if next[0] != "IDENTIFIER":
                                 self.error("expected variable name as class variable name", self.line)
                             self.class_variables[next[1]] = _class_
+                elif current_token_value in ("int", "str", "dict", "list", "bool", "final"):
+                    pass
             elif current_token_type == "CREMENTATION":
                 left = self.peek(-1)
                 if left[0] == 'IDENTIFIER':
@@ -1408,9 +1658,60 @@ class Interpreter:
                     else:
                         value = self.variables[right_value]["value"]
                         self.variables[left_value]["value"] = value
+            elif current_token_type == "DOLLAR":
+                self.advance()
+                next = self.current_token
+                if next[0] != "IDENTIFIER":
+                    self.error(f"invalid interface name '{next[1]}'", self.line)
+                iname = next[1]
+                self.advance()
+                next = self.current_token
+                cparams = []
+                if next == ("PARENTHESIS", "("):
+                    self.advance()
+                    cparams = self.peek_until(("PARENTHESIS", ")"))
+                    self.advance()
+                    idx = 0
+                    for param in cparams:
+                        cparams[idx] = param[1]
+                        idx += 1
+                self.advance()
+                toks = self.peek_until(("CURLY", "}"))
+                methods = {}
+                idx = 0
+                tok = toks[idx]
+                while tok is not None:
+                    if tok == ("KEYWORD", "fn"):
+                        idx += 1
+                        tok = toks[idx]
+                        name = tok
+                        idx += 1
+                        tok = toks[idx]
+                        if tok == ("PARENTHESIS", "("):
+                            params = []
+                            idx += 1
+                            tok = toks[idx]
+                            while tok != ("PARENTHESIS", ")"):
+                                tok = toks[idx]
+                                params.append(tok[1])
+                                idx += 1
+                            if len(params) > 0:
+                                if params[-1] == ")":
+                                    params = params[:-1]
+                            methods[name[1]] = params
+                            idx += 1
+                    idx += 1
+                    if idx >= len(toks):
+                        tok = None
+                        continue
+                    tok = toks[idx]
+                self.interfaces[iname] = {
+                    "methods": methods,
+                    "params": cparams
+                }
             self.advance()
         if importing:
-            return self.variables, self.functions, self.classes, self.class_variables
+            return self.variables, self.functions, self.classes, self.class_variables, self.interfaces
         return self.return_value
 
 VERSION_INFO = rf"""{colorama.Fore.CYAN}
@@ -1423,8 +1724,8 @@ VERSION_INFO = rf"""{colorama.Fore.CYAN}
 | $$$$$$$/|  $$$$$$$ /$$$$$$$/|  $$$$$$$| $$  |  $$$$/
 |_______/  \_______/|_______/  \_______/|__/   \___/  
 {colorama.Fore.RESET}
-Basalt Language v1.1.0
-Build: 2026-01-27
+Basalt Language v1.2.0
+Build: 2026-01-30
 """
 
 HELP_TEXT = """Basalt Interpreter - Usage: basalt [-flag/--flag] [file.basalt]
@@ -1459,13 +1760,13 @@ Good To Know:
 These won't be enough however. You'll need to learn other Basalt concepts on your own."""
 
 INFO_TEXT = """Basalt Engine Information:
-  Version: 1.1.0
-  Build: 2026-01-17
+  Version: 1.2.0
+  Build: 2026-01-30
   Interpreter written in: Python
   Memory usage: probably a lot considering it's Python and this language is unoptimized
-  Interpreter size: probably around 60-100kb (maybe more)
+  Interpreter size: probably between 80-150kb (maybe more)
   Developed by: BasaltDev (i'm not leaking my name bro)
-  Developed in: ~3-4 days"""
+  Originally developed in: ~3-4 days"""
 
 def main():
     global argv
@@ -1509,14 +1810,14 @@ def main():
             print(VERSION_INFO[:-1])
             print("Basalt REPL (Build 2026-01-27)")
             try:
-                variables, functions, classes, class_variables = {}, {}, {}, {}
+                variables, functions, classes, class_variables, interfaces = {}, {}, {}, {}, {}
                 while 1 == 1:
                     command = input("> ")
                     lexer = Lexer(command, keywords=keywords)
                     tokens = lexer.tokenize()
                     interpreter = Interpreter(tokens, repl=True)
                     try:
-                        variables, functions, classes, class_variables = interpreter.interpret(variables=variables, functions=functions, clses=classes, class_vars=class_variables, importing=True)
+                        variables, functions, classes, class_variables, interfaces = interpreter.interpret(variables=variables, functions=functions, clses=classes, class_vars=class_variables, interfs=interfaces, importing=True)
                     except:
                         pass
             except:
