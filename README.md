@@ -16,6 +16,7 @@ Basalt is a lightweight programming language built by 1 person over the course o
 ~~3. **Verify**: Open a terminal and type: ```basalt -r your_script.basalt```~~
    
 ~~If it successfully installed, then congrats! You can now write scripts in Basalt.~~
+
 Basalt.exe has been removed due to false positive issues. To install Basalt, just download its source code.
 
 ## 📜 Running your first script:
