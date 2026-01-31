@@ -58,6 +58,7 @@ class Lexer:
                     self.advance()
             output += self.current_char
             self.advance()
+        output = output.replace("\\n", "\n").replace("\\t", "\t").replace("\\b", "\b").replace("\\\"", "\"").replace("\\\\", "\\")
         return output
     
     def get_number(self):
@@ -604,7 +605,6 @@ class Interpreter:
                         if expected_parenthesis_type != "PARENTHESIS" or expected_parenthesis_value != ")":
                             self.error("missing closing parenthesis", self.line)
                         if print_type != "IDENTIFIER":
-                            print_value = print_value.replace("\\n", "\n").replace("\\t", "\t").replace("\\b", "\b")
                             ending=''
                             if current_token_value == "println":
                                 ending = '\n'
@@ -1004,7 +1004,7 @@ class Interpreter:
                         self.advance()
                         if next_token_type == "IDENTIFIER":
                             next_token_value = self.variables[next_token_value]["value"]
-                        text_to_write = str(next_token_value).replace("\\n", "\n").replace("\\t", "\t").replace("\\b", "\b")
+                        text_to_write = str(next_token_value)
                         with open(file, 'w') as f:
                             f.write(text_to_write)
                     elif type_ == "read":
@@ -1021,7 +1021,7 @@ class Interpreter:
                         self.advance()
                         if next_token_type == "IDENTIFIER":
                             next_token_value = self.variables[next_token_value]["value"]
-                        text_to_write = next_token_value.replace("\\n", "\n").replace("\\t", "\t").replace("\\b", "\b")
+                        text_to_write = next_token_value
                         with open(file, 'a') as f:
                             f.write(text_to_write)
                 elif current_token_value == "system":
@@ -1084,14 +1084,14 @@ class Interpreter:
                         self.advance()
                         if next_token_type == "IDENTIFIER":
                             next_token_value = self.variables[next_token_value]["value"]
-                        a = next_token_value.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", "\"")
+                        a = next_token_value
                         if type(next_token_value) != str:
                             self.error("cannot use non-string value for string function", self.line)
                         next_token_type, next_token_value = self.peek()[0], self.peek()[1]
                         self.advance()
                         if next_token_type == "IDENTIFIER":
                             next_token_value = self.variables[next_token_value]["value"]
-                        b = next_token_value.replace("\\n", "\n").replace("\\t", "\t").replace("\\\"", "\"")
+                        b = next_token_value
                         if type(next_token_value) != str:
                             self.error("cannot use non-string value for string function", self.line)
                         string["value"] = string["value"].replace(a, b)
