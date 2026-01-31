@@ -1967,8 +1967,8 @@ VERSION_INFO = rf"""{colorama.Fore.CYAN}
 | $$$$$$$/|  $$$$$$$ /$$$$$$$/|  $$$$$$$| $$  |  $$$$/
 |_______/  \_______/|_______/  \_______/|__/   \___/  
 {colorama.Fore.RESET}
-Basalt Language v1.3.0
-Build: 2026-01-30
+Basalt Language v1.4.0
+Build: 2026-01-31
 """
 
 HELP_TEXT = """Basalt Interpreter - Usage: basalt [-flag/--flag] [file.basalt]
@@ -2003,8 +2003,8 @@ Good To Know:
 These won't be enough however. You'll need to learn other Basalt concepts on your own."""
 
 INFO_TEXT = """Basalt Engine Information:
-  Version: 1.3.0
-  Build: 2026-01-30
+  Version: 1.4.0
+  Build: 2026-01-31
   Interpreter written in: Python
   Memory usage: probably a lot considering it's Python and this language is unoptimized
   Interpreter size: probably between 80-150kb (maybe more)
